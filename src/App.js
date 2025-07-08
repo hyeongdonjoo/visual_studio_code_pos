@@ -55,17 +55,18 @@ const App = () => {
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const newOrders = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
 
+      // 새로운 주문이 들어왔을 때
       if (newOrders.length && newOrders[0].id !== lastOrderId) {
         const order = newOrders[0];
-        const orderRef = doc(db, "orders", selectedShop, "list", order.id);
-        const orderSnap = await getDoc(orderRef);
-        if (orderSnap.exists() && orderSnap.data().statsProcessed) return;
 
+        // 포스웹에 알림이 뜨도록 설정 (사용자가 클릭한 경우에만)
         if (userInteracted) {
           notificationSound.play().catch(() => {});
         }
+
         setLastOrderId(order.id);
 
+        // 메뉴별 통계 처리
         const menuStats = {};
         order.items?.forEach((item) => {
           const name = item.name;
@@ -81,6 +82,7 @@ const App = () => {
         const dateKey = date.toISOString().split("T")[0];
         const monthKey = dateKey.slice(0, 7);
 
+        // 통계 업데이트 (일별, 월별)
         const updateStat = async (type, key, stats) => {
           const ref = doc(db, "stats", selectedShop, type, key);
           const snap = await getDoc(ref);
@@ -95,13 +97,18 @@ const App = () => {
           await setDoc(ref, existing);
         };
 
+        // 일별, 월별 통계 업데이트
         await updateStat("daily", dateKey, menuStats);
         await updateStat("monthly", monthKey, menuStats);
-        await updateDoc(orderRef, { statsProcessed: true });
+        await updateDoc(doc(db, "orders", selectedShop, "list", order.id), {
+          statsProcessed: true,
+        });
       }
 
-      setOrders(newOrders);
+      setOrders(newOrders); // 주문 목록을 상태에 반영
+      localStorage.setItem("orders", JSON.stringify(newOrders)); // Save orders to localStorage
     });
+
     return () => unsubscribe();
   }, [selectedShop, lastOrderId, userInteracted, menuPrices]);
 
@@ -139,6 +146,8 @@ const App = () => {
       });
       totals.sort((a, b) => a.date.localeCompare(b.date));
       setStatsData({ totals, menus });
+
+      // 월별 메뉴별 판매금액 처리
       if (!selectedDate && totals.length) setSelectedDate(totals[totals.length - 1].date);
     };
 
@@ -161,6 +170,7 @@ const App = () => {
 
   const renderStatsContent = () => {
     const { totals, menus } = statsData;
+
     return (
       <>
         <ResponsiveContainer width="100%" height={300}>
